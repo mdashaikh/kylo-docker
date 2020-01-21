@@ -1,0 +1,133 @@
+version: '3'
+
+services:
+
+  services:
+    image: 127.0.0.1:5000/kylo-master
+    build: ./build/kylo-master
+    entrypoint: /entrypoint-kylo-services.sh
+    networks:
+      - frontoffice
+      - backoffice
+      - reverse-proxy
+    volumes:
+      - ./volumes/services/application.properties:/opt/kylo/kylo-services/conf/application.properties
+      - ./volumes/services/elasticsearch-rest.properties:/opt/kylo/kylo-services/conf/elasticsearch-rest.properties
+      - ./volumes/services/spark.properties:/opt/kylo/kylo-services/conf/spark.properties
+      - ./volumes/services/ambari.properties:/opt/kylo/kylo-services/conf/ambari.properties
+      - ./volumes/services/users.properties:/opt/kylo/users.properties
+      - ./volumes/services/groups.properties:/opt/kylo/groups.properties
+      - ./volumes/services/advanced_ingest.template.zip:/opt/kylo/setup/data/templates/advanced_ingest.template.zip
+      - ./volumes/services/streaming_ingest.template.zip:/opt/kylo/setup/data/templates/streaming_ingest.template.zip
+      - ./volumes/commons/lib-ext/sqljdbc42.jar:/opt/kylo/kylo-services/lib/sqljdbc42.jar
+      - ./volumes/commons/lib-ext/ifxjdbc-4.10.10.0.jar:/opt/kylo/kylo-services/lib/ifxjdbc-4.10.10.0.jar
+      - ./volumes/services/core-site.xml:/etc/hadoop/conf/core-site.xml
+
+  ui:
+    image: 127.0.0.1:5000/kylo-master
+    entrypoint: /entrypoint-kylo-ui.sh
+    networks:
+      - frontoffice
+      - backoffice
+      - reverse-proxy
+    volumes:
+      - ./volumes/ui/application.properties:/opt/kylo/kylo-ui/conf/application.properties
+      - ./volumes/services/users.properties:/opt/kylo/users.properties
+      - ./volumes/services/groups.properties:/opt/kylo/groups.properties
+    environment:
+      VIRTUAL_HOST: ui.sandbox.kylo.io
+      VIRTUAL_PORT: 8400      
+
+  nifi:
+    image: 127.0.0.1:5000/kylo-master
+    entrypoint: /entrypoint-kylo-nifi.sh
+    volumes:
+      - ./volumes/nifi/config.properties:/opt/nifi/ext-config/config.properties
+      - ./volumes/commons/lib-ext/sqljdbc42.jar:/opt/nifi/current/lib/sqljdbc42.jar
+      - ./volumes/commons/lib-ext/ifxjdbc-4.10.10.0.jar:/opt/nifi/current/lib/ifxjdbc-4.10.10.0.jar
+    networks:
+      - frontoffice
+      - backoffice
+      - reverse-proxy
+    environment:
+      VIRTUAL_HOST: nifi.sandbox.kylo.io
+      VIRTUAL_PORT: 8079
+      
+  db:
+    image: mariadb:10.3
+    environment:
+      MYSQL_DATABASE: kylo
+      MYSQL_ROOT_PASSWORD: kylo
+      MYSQL_USER: kylo
+      MYSQL_PASSWORD: kylo
+    networks:
+      - backoffice
+      
+  es:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.4.0
+    networks:
+      - backoffice
+    
+  jms:
+    image: rmohr/activemq:5.15.4-alpine
+    networks:
+      - backoffice
+      
+  init-es:
+    image: 127.0.0.1:5000/kylo-master
+    depends_on:
+      - es
+    deploy:
+      restart_policy:
+        condition: none
+    command: "/opt/wait-for-it/wait-for-it.sh -h es -p 9200 --strict --timeout=0 -- /opt/kylo/bin/create-kylo-indexes-es.sh es 9200 1 1"
+    networks:
+      - backoffice
+      
+  #init-templates:
+  #  image: 127.0.0.1:5000/kylo-master
+  #  depends_on:
+  #    - ui
+  #  deploy:
+  #    restart_policy:
+  #      condition: none
+  #  command: "/opt/wait-for-it/wait-for-it.sh -h ui -p 8400 --strict --timeout=0 -- /opt/kylo/setup/data/install-templates.sh ui 8400"
+  #  networks:
+  #    - backoffice
+  
+  hdp-sandbox:
+    image: hortonworks/sandbox-hdp:2.6.5
+    ports:
+      - 18080:8080
+    networks:
+      - backoffice
+      - reverse-proxy
+    hostname: sandbox-hdp.hortonworks.com
+    privileged: true
+    environment:
+      VIRTUAL_HOST: ambari.sandbox.kylo.io
+      VIRTUAL_PORT: 8080
+    # Extra steps:
+    # - docker exec -it kylo_hdp-sandbox_1 ambari-admin-password-reset
+  
+  reverse-proxy:
+    image: jwilder/nginx-proxy:alpine
+    ports:
+      - 80:80
+      - 443:443
+    networks:
+      - reverse-proxy
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+  registry:
+    image: registry
+    networks:
+      - default
+    ports:
+      - 5000:5000
+
+networks:
+  frontoffice:
+  backoffice:
+  reverse-proxy:
