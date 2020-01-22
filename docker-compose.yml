@@ -4,6 +4,8 @@ services:
 
   services:
     image: 127.0.0.1:5000/kylo-master
+    ports:
+      - 8420:8420
     build: ./build/kylo-master
     entrypoint: /entrypoint-kylo-services.sh
     networks:
@@ -25,6 +27,8 @@ services:
 
   ui:
     image: 127.0.0.1:5000/kylo-master
+    ports:
+      - 8400:8400
     entrypoint: /entrypoint-kylo-ui.sh
     networks:
       - frontoffice
@@ -40,6 +44,8 @@ services:
 
   nifi:
     image: 127.0.0.1:5000/kylo-master
+    ports:
+      - 8079:8079
     entrypoint: /entrypoint-kylo-nifi.sh
     volumes:
       - ./volumes/nifi/config.properties:/opt/nifi/ext-config/config.properties
